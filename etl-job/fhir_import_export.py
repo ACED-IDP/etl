@@ -382,6 +382,26 @@ def _empty_project(output: list[str],
 
 
 def main():
+    ######## DELETE AFTER TEST USE ##############
+
+    auth= _auth()
+    user = _user(auth)
+    output = {'user': user['email'], 'files': [], 'logs': []}
+
+    schema = None
+    if schema is None:
+        schema = 'https://aced-public.s3.us-west-2.amazonaws.com/aced-test.json'
+        output['logs'].append(f"DICTIONARY_URL not found in environment using {schema}")
+
+    print("HELLO")
+    try:
+        _load_all("cbds-data", "cbds-data", output, "META", schema, "work")
+    except Exception as e:
+        print("Exception:", str(e))
+
+    exit()
+    ######## DELETE AFTER TEST USE ##############
+
     token = _get_token()
     auth = _auth(token)
 
