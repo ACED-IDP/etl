@@ -52,7 +52,6 @@ COPY ./requirements.txt /root
 RUN source venv/bin/activate && pip install -r requirements.txt
 
 # move these out of requirements.txt, so that builds are quicker when we change
-RUN source venv/bin/activate && pip install "iceberg_tools>=0.0.q8rc3"
 RUN source venv/bin/activate && pip install "gen3_tracker==0.0.5rc2"
 RUN source venv/bin/activate && pip install "aced-submission==0.0.9rc26"
 ENV GOPROXY=direct
@@ -73,10 +72,6 @@ RUN mkdir /root/studies
 RUN ls -la /root
 RUN pwd
 RUN ls -l /root
-
-# TODO - should this belong in etl pod repo / helm?
-RUN curl  https://raw.githubusercontent.com/bmeg/iceberg-schema-tools/development/config.yaml -o config.yaml
-#ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 ENTRYPOINT [ "/root/entrypoint.sh" ]
 CMD [ "python", "fhir_import_export.py" ]
