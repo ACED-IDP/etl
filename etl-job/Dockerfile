@@ -64,6 +64,7 @@ RUN git clone https://github.com/bmeg/iceberg.git && \
 	cd iceberg && \
 	git checkout feature/FHIR-resource-type
 
+
 COPY . /root
 RUN chmod +x /root/entrypoint.sh
 
