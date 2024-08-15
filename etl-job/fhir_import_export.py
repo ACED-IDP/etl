@@ -210,7 +210,7 @@ def _load_all(study: str,
         output['logs'].append(f"Simplifying study: {file_path}")
 
         subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}", "--gzip_files"])
-        bulk_add("CALIPER", extraction_path, output, _get_token())
+        bulk_add("CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
