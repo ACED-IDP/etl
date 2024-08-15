@@ -233,6 +233,11 @@ def _load_all(study: str,
 
         db.load_ndjson_from_dir(path=file_path)
 
+        load_flat(project_id=project_id, index='researchsubject',
+                  generator=db.flattened_research_subjects(),
+                  limit=None, elastic_url=DEFAULT_ELASTIC,
+                  output_path=None)
+
         load_flat(project_id=project_id, index='observation',
                   generator=db.flattened_observations(),
                   limit=None, elastic_url=DEFAULT_ELASTIC,
