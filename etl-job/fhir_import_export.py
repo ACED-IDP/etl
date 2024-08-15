@@ -7,13 +7,13 @@ import subprocess
 import sys
 import traceback
 import requests
+import yaml
 from datetime import datetime
 
-import yaml
 from aced_submission.fhir_store import fhir_get, fhir_put, fhir_delete
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
-from aced_submission.meta_graph_load import empty_project
+from aced_submission.grip_load import bulk_add, delete_project as grip_delete
 from aced_submission.meta_discovery_load import discovery_load,\
     discovery_delete, discovery_get
 from opensearchpy import OpenSearch as Elasticsearch
@@ -24,20 +24,16 @@ from gen3_tracker.config import Config
 from gen3_tracker.git.snapshotter import push_snapshot
 from gen3_tracker.meta.dataframer import LocalFHIRDatabase
 
-from iceberg_tools.data.simplifier import simplify_directory
-
 logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 
 
 def _get_token() -> str:
     """Get ACCESS_TOKEN from environment"""
-    # print("[out] retrieving access token...")
     return os.environ.get('ACCESS_TOKEN', None)
 
 
 def _auth(access_token) -> Gen3Auth:
     """Authenticate using ACCESS_TOKEN"""
-    # print("[out] authorizing...")
     if access_token:
         # use access token from environment (set by sower)
         return Gen3Auth(refresh_file=f"accesstoken:///{access_token}")
@@ -49,54 +45,6 @@ def _user(auth: Gen3Auth) -> dict:
     """Get user info from arborist"""
     return auth.curl('/user/user').json()
 
-
-def load_grip(graph_name, directory_path, output, access_token):
-    """Loads a directory of .ndjson or .gz files to GRIP. TODO: implement schema in grip"""
-    # List graphs and check to see if graph name is amoung the graphs listed
-    response = requests.get("http://local-grip:8201/graphql/list-graphs",
-                        headers= {"Authorization": f"bearer {access_token}"})
-
-    response.raise_for_status()
-    response_json = response.json()
-    assert graph_name in response_json["data"]["graphs"], "ERROR, graph not found in GRIP"
-    output["logs"].append(response)
-    #print("RESPONSE: ", response)
-
-    output["logs"].append(f"loading files into {graph_name} from {directory_path}")
-    print(f"loading files into {graph_name} from {directory_path}")
-    assert os.path.isdir(directory_path), f"directory path {directory_path} is not a directory"
-
-    for file in [f for f in os.listdir(directory_path) if any([f.endswith(".json"), f.endswith(".gz"), f.endswith(".ndjson")])]:
-        print("FILE: ", file)
-        try:
-            file_path = f"{directory_path}/{file}"
-            output["logs"].append(f"loading file: {file_path}")
-            graph_component = "edge" if "edge" in file_path else "vertex"
-            with open(file_path, 'rb') as file:
-                files = {'file': (file_path, file)}
-                response = requests.post(
-                    f"http://local-grip:8201/graphql/{graph_name}/bulk-load",
-                    data = {
-                        "types" : graph_component,
-                    },
-                    headers = {"Authorization": f"bearer {access_token}"},
-                    files = files
-                )
-
-            response.raise_for_status()
-            json_data = response.json()
-            output["logs"].append(f"json data: {json_data}")
-            print(json_data)
-
-        except requests.exceptions.HTTPError as http_err:
-            print(f"HTTP error occurred: {http_err}")
-            output["logs"].append(f"HTTP error occurred: {http_err}")
-            return False
-        except Exception as err:
-            print(f"An error occurred: {str(err)}")
-            output["logs"].append(f"An error occurred: {str(err)}")
-            return False
-        return True
 
 def _input_data() -> dict:
     """Get input data"""
@@ -238,10 +186,6 @@ def _load_all(study: str,
               file_path: str,
               schema: str,
               work_path: str) -> bool:
-    config = "/root/config.yaml"
-    if not os.path.isfile(config):
-        output['logs'].append("config file does not exist")
-        return False
 
     if study is None or study == "":
         output['logs'].append("Please provide a study name")
@@ -266,7 +210,7 @@ def _load_all(study: str,
         output['logs'].append(f"Simplifying study: {file_path}")
 
         subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}", "--gzip_files"])
-        load_grip("GEN3", extraction_path, output, _get_token())
+        bulk_add("CALIPER", extraction_path, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
@@ -274,7 +218,6 @@ def _load_all(study: str,
         db_path.unlink(missing_ok=True)
 
         db = LocalFHIRDatabase(db_name=db_path)
-
         db.load_ndjson_from_dir(path=file_path)
 
         load_flat(project_id=project_id, index='observation',
@@ -287,38 +230,6 @@ def _load_all(study: str,
                   limit=None, elastic_url=DEFAULT_ELASTIC,
                   output_path=None)
 
-        # Load disovery page if research study exists in commit.
-        # With patient index gone this code needs to get refactored. Not a high priority
-        """
-        if os.path.isfile(research_study):
-            output['logs'].append("Writing to metadata-service")
-            elastic = Elasticsearch([DEFAULT_ELASTIC], request_timeout=120)
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {"project_id": project_id}}
-                        ]
-                    }
-                }
-            }
-            results = elastic.search(index="gen3.aced.io_patient_0", body=query, size=0)
-            _patients_count = results['hits']['total']['value']
-            with open(research_study, "r") as study:
-                Is there ever a scenario where the researchStudy will have more than one line?
-
-                Example autogenerated research study from g3t:
-
-                {'id': 'a45ea123-aeda-5982-aeac-79bfb1bf5920', 'name': 'research_study', 'relations': [],
-                'object': {'id': 'a45ea123-aeda-5982-aeac-79bfb1bf5920',
-                'status': 'active', 'description': 'Skeleton ResearchStudy for synthea-delete',
-                'resourceType': 'ResearchStudy', 'identifier': ['synthea_delete#synthea-delete'],
-                'identifier_coding': ['https://aced-idp.org/synthea-delete#synthea-delete']}}
-
-                study_meta = json.loads(study.readline())
-                discovery_load(project_id, _patients_count, study_meta["object"]["description"], study_meta["object"]["identifier_coding"])
-                output['logs'].append(f"Loaded discovery study {project_id}")
-        """
         logs = fhir_put(project_id, path=file_path,
                         elastic_url=DEFAULT_ELASTIC)
         yaml.dump(logs, sys.stdout, default_flow_style=False)
@@ -399,10 +310,11 @@ def _empty_project(output: dict,
     """Clear out graph and flat metadata for project """
     # check permissions
     try:
-        empty_project(program=program, project=project, dictionary_path=dictionary_path, config_path=config_path)
+        grip_delete(graph_name="CALIPER", project_id=f"{program}-{project}",
+                    output=output, access_token=_get_token())
         output['logs'].append(f"EMPTIED graph for {program}-{project}")
 
-        for index in ["patient", "observation", "file"]:
+        for index in ["researchsubject", "observation", "file"]:
             meta_flat_delete(project_id=f"{program}-{project}", index=index)
         output['logs'].append(f"EMPTIED flat for {program}-{project}")
 
