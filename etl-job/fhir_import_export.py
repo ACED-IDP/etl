@@ -13,7 +13,7 @@ from datetime import datetime
 from aced_submission.fhir_store import fhir_get, fhir_put, fhir_delete
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
-from aced_submission.grip_load import bulk_add, delete_project as grip_delete
+from aced_submission.grip_load import bulk_load, delete_project as grip_delete
 from aced_submission.meta_discovery_load import discovery_load,\
     discovery_delete, discovery_get
 from opensearchpy import OpenSearch as Elasticsearch
@@ -210,7 +210,7 @@ def _load_all(study: str,
         output['logs'].append(f"Simplifying study: {file_path}")
 
         subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
-        bulk_add("CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
+        bulk_load("CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
