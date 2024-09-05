@@ -236,8 +236,7 @@ def _load_all(study: str,
         index_generator_dict = {
             'researchsubject': db.flattened_research_subjects,
             'specimen': db.flattened_specimens,
-            'file': db.flattened_document_references,
-            'observation': db.flattened_observations
+            'file': db.flattened_document_references
         }
 
         for index, generator in index_generator_dict.items():
