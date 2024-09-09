@@ -52,8 +52,9 @@ COPY ./requirements.txt /root
 RUN source venv/bin/activate && pip install -r requirements.txt
 
 # move these out of requirements.txt, so that builds are quicker when we change
-RUN source venv/bin/activate && pip install "gen3_tracker==0.0.5rc3"
-RUN source venv/bin/activate && pip install "aced-submission==0.0.9rc31"
+RUN source venv/bin/activate && pip install "iceberg_tools>=0.0.8rc3"
+RUN source venv/bin/activate && pip install "gen3_tracker==0.0.5rc8"
+RUN source venv/bin/activate && pip install "aced-submission==0.0.9rc33"
 ENV GOPROXY=direct
 RUN git clone https://github.com/bmeg/jsonschemagraph.git && \
 	cd jsonschemagraph && \
