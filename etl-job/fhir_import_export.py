@@ -233,15 +233,17 @@ def _load_all(study: str,
 
         db.load_ndjson_from_dir(path=file_path)
 
-        load_flat(project_id=project_id, index='observation',
-                  generator=db.flattened_observations(),
-                  limit=None, elastic_url=DEFAULT_ELASTIC,
-                  output_path=None)
+        index_generator_dict = {
+            'researchsubject': db.flattened_research_subjects,
+            'specimen': db.flattened_specimens,
+            'file': db.flattened_document_references
+        }
 
-        load_flat(project_id=project_id, index='file',
-                  generator=db.flattened_document_references(),
-                  limit=None, elastic_url=DEFAULT_ELASTIC,
-                  output_path=None)
+        for index, generator in index_generator_dict.items():
+            load_flat(project_id=project_id, index=index,
+                    generator=generator(),
+                    limit=None, elastic_url=DEFAULT_ELASTIC,
+                    output_path=None)
 
         # Load disovery page if research study exists in commit.
         # With patient index gone this code needs to get refactored. Not a high priority
