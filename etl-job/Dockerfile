@@ -48,7 +48,6 @@ RUN source venv/bin/activate && pip install -r requirements.txt
 RUN source venv/bin/activate && pip install "iceberg_tools>=0.0.8rc3"
 RUN source venv/bin/activate && pip install "gen3_tracker==0.0.5rc8"
 RUN source venv/bin/activate && pip install "aced-submission==0.0.9rc34"
-ENV GOPROXY=direct
     
 RUN git clone https://github.com/bmeg/iceberg.git && \
 	cd iceberg && \

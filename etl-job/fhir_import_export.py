@@ -221,8 +221,7 @@ def _load_all(study: str,
 
         db = LocalFHIRDatabase(db_name=db_path)
 
-        # Use FHIR index names to do direct query to Grip to stream data into sqlite db
-        for index in ["ResearchSubject", "Specimen", "DocumentReference"]:
+        for index in [f.split(".vertex.json.gz")[0] for f in os.listdir(extraction_path) if f.endswith(".vertex.json.gz")]:
             data = {
                     "query": [
                         {"v": []},
