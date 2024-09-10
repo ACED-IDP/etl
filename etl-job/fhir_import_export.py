@@ -13,9 +13,7 @@ from datetime import datetime
 from aced_submission.fhir_store import fhir_get, fhir_put, fhir_delete
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
-from aced_submission.grip_load import bulk_load, delete_project as grip_delete
-from aced_submission.meta_discovery_load import discovery_load,\
-    discovery_delete, discovery_get
+from aced_submission.grip_load import bulk_load, proto_stream_query, delete_project as grip_delete
 from opensearchpy import OpenSearch as Elasticsearch
 from opensearchpy import OpenSearchException
 from gen3.auth import Gen3Auth
@@ -212,14 +210,26 @@ def _load_all(study: str,
         subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
         bulk_load("CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
+        # Clear old Elastic indices, new dataframer operation is incoming.
+        for index in ["researchsubject", "specimen", "file"]:
+            meta_flat_delete(project_id=f"{program}-{project}", index=index)
+
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
         db_path = (work_path / "local_fhir.db")
         db_path.unlink(missing_ok=True)
 
         db = LocalFHIRDatabase(db_name=db_path)
-        db.load_ndjson_from_dir(path=file_path)
 
+        # Use FHIR index names to do direct query to Grip to stream data into sqlite db
+        for index in ["ResearchSubject", "Specimen", "DocumentReference"]:
+            data = {
+                    "query": [
+                        {"v": []},
+                        {"hasLabel": [index]}
+                    ]
+            }
+            db.bulk_insert_data(resources=proto_stream_query("CALIPER", data))
 
         index_generator_dict = {
             'researchsubject': db.flattened_research_subjects,
@@ -283,8 +293,6 @@ def _get(output: dict,
     logs = fhir_get(f"{program}-{project}", study_path, DEFAULT_ELASTIC)
     output['logs'].extend(logs)
 
-    discovery_data = discovery_get(f"{program}-{project}")
-    output['logs'].append(f"_get discovery study: {str(discovery_data)}")
 
     # zip and upload the exported files to bucket
     now = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -317,17 +325,12 @@ def _empty_project(output: dict,
                     output=output, access_token=_get_token())
         output['logs'].append(f"EMPTIED graph for {program}-{project}")
 
-        for index in ["researchsubject", "observation", "file"]:
+        for index in ["researchsubject", "specimen", "file"]:
             meta_flat_delete(project_id=f"{program}-{project}", index=index)
         output['logs'].append(f"EMPTIED flat for {program}-{project}")
 
         fhir_delete(f"{program}-{project}", DEFAULT_ELASTIC)
         output['logs'].append(f"EMPTIED FHIR STORE for {program}-{project}")
-
-        discovery_data = discovery_get(f"{program}-{project}")
-        if discovery_data not in [None, {}]:
-            output['logs'].append(f"Empty discovery study: {str(discovery_data)}")
-            discovery_delete(f"{program}-{project}")
 
     except Exception as e:
         output['logs'].append(f"An Exception Occurred emptying project {program}-{project}: {str(e)}")
