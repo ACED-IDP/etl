@@ -248,22 +248,23 @@ def _load_all(study: str,
         yaml.dump(logs, sys.stdout, default_flow_style=False)
 
     except OpenSearchException as e:
-        print("EXCEPTION: ", str(e))
         output['logs'].append(f"An ElasticSearch Exception occurred: {str(e)}")
         tb = traceback.format_exc()
         print("TRACEBACK: ", tb)
+        print("OpenSearchException: ", str(e))
+        output['logs'].append(tb)
         if logs is not None:
             output['logs'].extend(logs)
-            output['logs'].append(tb)
         return False
 
     except Exception as e:
         output['logs'].append(f"An Exception Occurred: {str(e)}")
         tb = traceback.format_exc()
-        print("ERROR: ", str(e))
+        print("TRACEBACK: ", tb)
+        print("Exception: ", str(e))
+        output['logs'].append(tb)
         if logs is not None:
             output['logs'].extend(logs)
-            output['logs'].append(tb)
         return False
 
     output['logs'].append(f"Loaded {study}")
