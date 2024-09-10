@@ -13,7 +13,8 @@ from datetime import datetime
 from aced_submission.fhir_store import fhir_get, fhir_put, fhir_delete
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
-from aced_submission.grip_load import bulk_load, proto_stream_query, delete_project as grip_delete
+from aced_submission.grip_load import bulk_load, proto_stream_query, list_labels, \
+    delete_project as grip_delete
 from opensearchpy import OpenSearch as Elasticsearch
 from opensearchpy import OpenSearchException
 from gen3.auth import Gen3Auth
@@ -210,10 +211,6 @@ def _load_all(study: str,
         subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
         bulk_load("CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
-        # Clear old Elastic indices, new dataframer operation is incoming.
-        for index in ["researchsubject", "specimen", "file"]:
-            meta_flat_delete(project_id=f"{program}-{project}", index=index)
-
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
         db_path = (work_path / "local_fhir.db")
@@ -221,7 +218,7 @@ def _load_all(study: str,
 
         db = LocalFHIRDatabase(db_name=db_path)
 
-        for index in [f.split(".vertex.json.gz")[0] for f in os.listdir(extraction_path) if f.endswith(".vertex.json.gz")]:
+        for index in list_labels("CALIPER")["vertexLabels"]:
             data = {
                     "query": [
                         {"v": []},
@@ -235,6 +232,10 @@ def _load_all(study: str,
             'specimen': db.flattened_specimens,
             'file': db.flattened_document_references
         }
+
+        # Clear old Elastic indices
+        for index in index_generator_dict.keys():
+            meta_flat_delete(project_id=f"{program}-{project}", index=index)
 
         for index, generator in index_generator_dict.items():
             load_flat(project_id=project_id, index=index,
