@@ -23,13 +23,6 @@ RUN apt-get -y --no-install-recommends install  \
 
 RUN rm -rf /var/lib/apt/lists/*
 
-ENV GOPATH=/go
-ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
-RUN wget https://go.dev/dl/go1.22.5.linux-amd64.tar.gz && \ 
-	tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz && \ 
-	rm go1.22.5.linux-amd64.tar.gz
-
-RUN mkdir -p $GOPATH/src $GOPATH/bin
 
 # set the working directory in the container
 WORKDIR /root
@@ -56,14 +49,16 @@ RUN source venv/bin/activate && pip install "iceberg_tools>=0.0.8rc3"
 RUN source venv/bin/activate && pip install "gen3_tracker==0.0.5rc8"
 RUN source venv/bin/activate && pip install "aced-submission==0.0.9rc34"
 ENV GOPROXY=direct
-RUN git clone https://github.com/bmeg/jsonschemagraph.git && \
-	cd jsonschemagraph && \
-	go build . && \
-	go install .
     
 RUN git clone https://github.com/bmeg/iceberg.git && \
 	cd iceberg && \
 	git checkout feature/FHIR-resource-type
+
+#Add jsonschemagraph exe to image
+RUN wget https://github.com/bmeg/jsonschemagraph/releases/download/v0.0.2/jsonschemagraph-linux.amd64 -P /usr/local/bin/
+RUN mv /usr/local/bin/jsonschemagraph-linux.amd64 /usr/local/bin/jsonschemagraph
+RUN chmod +x /usr/local/bin/jsonschemagraph
+ENV PATH="/usr/local/bin:$PATH"
 
 
 COPY . /root
