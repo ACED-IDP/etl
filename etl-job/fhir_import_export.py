@@ -13,7 +13,7 @@ from datetime import datetime
 from aced_submission.fhir_store import fhir_get, fhir_put, fhir_delete
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
-from aced_submission.grip_load import bulk_load, proto_stream_query, list_labels, \
+from aced_submission.grip_load import bulk_load, get_project_data, \
     delete_project as grip_delete
 from opensearchpy import OpenSearch as Elasticsearch
 from opensearchpy import OpenSearchException
@@ -217,15 +217,7 @@ def _load_all(study: str,
         db_path.unlink(missing_ok=True)
 
         db = LocalFHIRDatabase(db_name=db_path)
-
-        for index in list_labels("CALIPER")["vertexLabels"]:
-            data = {
-                    "query": [
-                        {"v": []},
-                        {"hasLabel": [index]}
-                    ]
-            }
-            db.bulk_insert_data(resources=proto_stream_query("CALIPER", data))
+        db.bulk_insert_data(resources=get_project_data("CALIPER", f"{program}-{project}", output, _get_token()))
 
         index_generator_dict = {
             'researchsubject': db.flattened_research_subjects,
@@ -233,7 +225,7 @@ def _load_all(study: str,
             'file': db.flattened_document_references
         }
 
-        # Clear old Elastic indices
+        # To ensure differences in the dataframer versions do not conflict, clear the project, and reload the project.
         for index in index_generator_dict.keys():
             meta_flat_delete(project_id=f"{program}-{project}", index=index)
 
