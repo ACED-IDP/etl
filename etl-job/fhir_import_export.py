@@ -26,7 +26,12 @@ from gen3_tracker.meta.dataframer import LocalFHIRDatabase
 logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 
 
-def _get_token() -> str:
+def _get_grip_service() -> str | None:
+    """Get GRIP_SERVICE_NAME from environment"""
+    return os.environ.get('GRIP_SERVICE_NAME', None)
+
+
+def _get_token() -> str | None:
     """Get ACCESS_TOKEN from environment"""
     return os.environ.get('ACCESS_TOKEN', None)
 
@@ -209,7 +214,7 @@ def _load_all(study: str,
         output['logs'].append(f"Simplifying study: {file_path}")
 
         subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
-        bulk_load("CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
+        bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
@@ -217,7 +222,7 @@ def _load_all(study: str,
         db_path.unlink(missing_ok=True)
 
         db = LocalFHIRDatabase(db_name=db_path)
-        db.bulk_insert_data(resources=get_project_data("CALIPER", f"{program}-{project}", output, _get_token()))
+        db.bulk_insert_data(resources=get_project_data(_get_grip_service(), "CALIPER", f"{program}-{project}", output, _get_token()))
 
         index_generator_dict = {
             'researchsubject': db.flattened_research_subjects,
@@ -269,7 +274,7 @@ def _get(output: dict,
          program: str,
          project: str,
          user: dict,
-         auth: Gen3Auth) -> str:
+         auth: Gen3Auth) -> str | None:
     """Export data from the fhir store to bucket, returns object_id."""
     can_read = _can_read(output, program, project, user)
     if not can_read:
@@ -309,12 +314,12 @@ def _empty_project(output: dict,
                    program: str,
                    project: str,
                    user: dict,
-                   dictionary_path: str = None,
-                   config_path: str = None):
+                   dictionary_path: str | None = None,
+                   config_path: str | None = None):
     """Clear out graph and flat metadata for project """
     # check permissions
     try:
-        grip_delete(graph_name="CALIPER", project_id=f"{program}-{project}",
+        grip_delete(_get_grip_service(), graph_name="CALIPER", project_id=f"{program}-{project}",
                     output=output, access_token=_get_token())
         output['logs'].append(f"EMPTIED graph for {program}-{project}")
 
