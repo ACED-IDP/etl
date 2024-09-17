@@ -6,15 +6,15 @@ import shutil
 import subprocess
 import sys
 import traceback
+import requests
+import yaml
 from datetime import datetime
 
-import yaml
 from aced_submission.fhir_store import fhir_get, fhir_put, fhir_delete
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
-from aced_submission.meta_graph_load import meta_upload, empty_project
-from aced_submission.meta_discovery_load import discovery_load,\
-    discovery_delete, discovery_get
+from aced_submission.grip_load import bulk_load, get_project_data, \
+    delete_project as grip_delete
 from opensearchpy import OpenSearch as Elasticsearch
 from opensearchpy import OpenSearchException
 from gen3.auth import Gen3Auth
@@ -23,20 +23,21 @@ from gen3_tracker.config import Config
 from gen3_tracker.git.snapshotter import push_snapshot
 from gen3_tracker.meta.dataframer import LocalFHIRDatabase
 
-from iceberg_tools.data.simplifier import simplify_directory
-
 logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 
 
-def _get_token() -> str:
+def _get_grip_service() -> str | None:
+    """Get GRIP_SERVICE_NAME from environment"""
+    return os.environ.get('GRIP_SERVICE_NAME', None)
+
+
+def _get_token() -> str | None:
     """Get ACCESS_TOKEN from environment"""
-    # print("[out] retrieving access token...")
     return os.environ.get('ACCESS_TOKEN', None)
 
 
 def _auth(access_token) -> Gen3Auth:
     """Authenticate using ACCESS_TOKEN"""
-    # print("[out] authorizing...")
     if access_token:
         # use access token from environment (set by sower)
         return Gen3Auth(refresh_file=f"accesstoken:///{access_token}")
@@ -62,7 +63,7 @@ def _get_program_project(input_data: dict) -> tuple:
     return input_data['project_id'].split('-')
 
 
-def _can_create(output: list[str],
+def _can_create(output: dict,
                 program: str,
                 project: str,
                 user: dict) -> bool:
@@ -105,7 +106,7 @@ def _can_create(output: list[str],
     return can_create
 
 
-def _can_read(output: list[str],
+def _can_read(output: dict,
               program: str,
               project: str,
               user: dict) -> bool:
@@ -150,7 +151,7 @@ def _can_read(output: list[str],
 
 def _download_and_unzip(object_id: str,
                         file_path: str,
-                        output: list[str],
+                        output: dict,
                         file_name: str) -> bool:
     """Download and unzip object_id to downloads/{file_path}"""
     try:
@@ -185,14 +186,10 @@ def _download_and_unzip(object_id: str,
 
 def _load_all(study: str,
               project_id: str,
-              output: list[str],
+              output: dict,
               file_path: str,
               schema: str,
               work_path: str) -> bool:
-    config = "/root/config.yaml"
-    if not os.path.isfile(config):
-        output['logs'].append("config file does not exist")
-        return False
 
     if study is None or study == "":
         output['logs'].append("Please provide a study name")
@@ -215,14 +212,9 @@ def _load_all(study: str,
         file_path = str(file_path)
         extraction_path = str(extraction_path)
         output['logs'].append(f"Simplifying study: {file_path}")
-        simplify_directory(file_path, pattern="**/*.*",
-                           output_path=extraction_path,
-                           schema_path=schema, dialect='PFB',
-                           config_path='config.yaml')  # Don't want to add this Iceberg pr right now split_obs=False
 
-        meta_upload(source_path=extraction_path,
-                    program=program, project=project,
-                    silent=False, dictionary_path=schema, config_path=config)
+        subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
+        bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
@@ -230,8 +222,7 @@ def _load_all(study: str,
         db_path.unlink(missing_ok=True)
 
         db = LocalFHIRDatabase(db_name=db_path)
-
-        db.load_ndjson_from_dir(path=file_path)
+        db.bulk_insert_data(resources=get_project_data(_get_grip_service(), "CALIPER", f"{program}-{project}", output, _get_token()))
 
         index_generator_dict = {
             'researchsubject': db.flattened_research_subjects,
@@ -239,65 +230,38 @@ def _load_all(study: str,
             'file': db.flattened_document_references
         }
 
+        # To ensure differences in the dataframer versions do not conflict, clear the project, and reload the project.
+        for index in index_generator_dict.keys():
+            meta_flat_delete(project_id=f"{program}-{project}", index=index)
+
         for index, generator in index_generator_dict.items():
             load_flat(project_id=project_id, index=index,
                     generator=generator(),
                     limit=None, elastic_url=DEFAULT_ELASTIC,
                     output_path=None)
 
-        # Load disovery page if research study exists in commit.
-        # With patient index gone this code needs to get refactored. Not a high priority
-        """
-        if os.path.isfile(research_study):
-            output['logs'].append("Writing to metadata-service")
-            elastic = Elasticsearch([DEFAULT_ELASTIC], request_timeout=120)
-            query = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {"project_id": project_id}}
-                        ]
-                    }
-                }
-            }
-            results = elastic.search(index="gen3.aced.io_patient_0", body=query, size=0)
-            _patients_count = results['hits']['total']['value']
-            with open(research_study, "r") as study:
-                Is there ever a scenario where the researchStudy will have more than one line?
-
-                Example autogenerated research study from g3t:
-
-                {'id': 'a45ea123-aeda-5982-aeac-79bfb1bf5920', 'name': 'research_study', 'relations': [],
-                'object': {'id': 'a45ea123-aeda-5982-aeac-79bfb1bf5920',
-                'status': 'active', 'description': 'Skeleton ResearchStudy for synthea-delete',
-                'resourceType': 'ResearchStudy', 'identifier': ['synthea_delete#synthea-delete'],
-                'identifier_coding': ['https://aced-idp.org/synthea-delete#synthea-delete']}}
-
-                study_meta = json.loads(study.readline())
-                discovery_load(project_id, _patients_count, study_meta["object"]["description"], study_meta["object"]["identifier_coding"])
-                output['logs'].append(f"Loaded discovery study {project_id}")
-        """
         logs = fhir_put(project_id, path=file_path,
                         elastic_url=DEFAULT_ELASTIC)
         yaml.dump(logs, sys.stdout, default_flow_style=False)
 
     except OpenSearchException as e:
-        print("EXCEPTION: ", str(e))
         output['logs'].append(f"An ElasticSearch Exception occurred: {str(e)}")
         tb = traceback.format_exc()
         print("TRACEBACK: ", tb)
+        print("OpenSearchException: ", str(e))
+        output['logs'].append(tb)
         if logs is not None:
             output['logs'].extend(logs)
-            output['logs'].append(tb)
         return False
 
     except Exception as e:
         output['logs'].append(f"An Exception Occurred: {str(e)}")
         tb = traceback.format_exc()
-        print("ERROR: ", str(e))
+        print("TRACEBACK: ", tb)
+        print("Exception: ", str(e))
+        output['logs'].append(tb)
         if logs is not None:
             output['logs'].extend(logs)
-            output['logs'].append(tb)
         return False
 
     output['logs'].append(f"Loaded {study}")
@@ -306,11 +270,11 @@ def _load_all(study: str,
     return True
 
 
-def _get(output: list[str],
+def _get(output: dict,
          program: str,
          project: str,
          user: dict,
-         auth: Gen3Auth) -> str:
+         auth: Gen3Auth) -> str | None:
     """Export data from the fhir store to bucket, returns object_id."""
     can_read = _can_read(output, program, project, user)
     if not can_read:
@@ -327,8 +291,6 @@ def _get(output: list[str],
     logs = fhir_get(f"{program}-{project}", study_path, DEFAULT_ELASTIC)
     output['logs'].extend(logs)
 
-    discovery_data = discovery_get(f"{program}-{project}")
-    output['logs'].append(f"_get discovery study: {str(discovery_data)}")
 
     # zip and upload the exported files to bucket
     now = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -348,29 +310,25 @@ def _get(output: list[str],
     return object_id
 
 
-def _empty_project(output: list[str],
+def _empty_project(output: dict,
                    program: str,
                    project: str,
                    user: dict,
-                   dictionary_path: str = None,
-                   config_path: str = None):
+                   dictionary_path: str | None = None,
+                   config_path: str | None = None):
     """Clear out graph and flat metadata for project """
     # check permissions
     try:
-        empty_project(program=program, project=project, dictionary_path=dictionary_path, config_path=config_path)
+        grip_delete(_get_grip_service(), graph_name="CALIPER", project_id=f"{program}-{project}",
+                    output=output, access_token=_get_token())
         output['logs'].append(f"EMPTIED graph for {program}-{project}")
 
-        for index in ["patient", "observation", "file"]:
+        for index in ["researchsubject", "specimen", "file"]:
             meta_flat_delete(project_id=f"{program}-{project}", index=index)
         output['logs'].append(f"EMPTIED flat for {program}-{project}")
 
         fhir_delete(f"{program}-{project}", DEFAULT_ELASTIC)
         output['logs'].append(f"EMPTIED FHIR STORE for {program}-{project}")
-
-        discovery_data = discovery_get(f"{program}-{project}")
-        if discovery_data not in [None, {}]:
-            output['logs'].append(f"Empty discovery study: {str(discovery_data)}")
-            discovery_delete(f"{program}-{project}")
 
     except Exception as e:
         output['logs'].append(f"An Exception Occurred emptying project {program}-{project}: {str(e)}")
@@ -425,7 +383,7 @@ def main():
 
 
 def _put(input_data: dict,
-         output: list[str],
+         output: dict,
          program: str,
          project: str,
          user: dict,
