@@ -212,7 +212,18 @@ def _load_all(study: str,
         extraction_path = str(extraction_path)
         output['logs'].append(f"Simplifying study: {file_path}")
 
-        subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
+        # TODO: test on etl pod
+        try:
+            result = subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
+        except Exception as err:
+            output['logs'].append(f"ERROR: Unable to generate jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}")
+            output['logs'].append(traceback.print_tb(err.__traceback__))
+            if result.stderr:
+                output['logs'].append(result.stderr.read().decode())
+            if result.stdout:
+                output['logs'].append(result.stdout.read().decode())
+            return False
+        
         bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
