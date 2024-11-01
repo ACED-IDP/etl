@@ -10,7 +10,6 @@ import requests
 import yaml
 from datetime import datetime
 
-from aced_submission.fhir_store import fhir_get, fhir_put, fhir_delete
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
 from aced_submission.grip_load import bulk_load, get_project_data, \
@@ -240,10 +239,6 @@ def _load_all(study: str,
                     limit=None, elastic_url=DEFAULT_ELASTIC,
                     output_path=None)
 
-        logs = fhir_put(project_id, path=file_path,
-                        elastic_url=DEFAULT_ELASTIC)
-        yaml.dump(logs, sys.stdout, default_flow_style=False)
-
     except OpenSearchException as e:
         output['logs'].append(f"An ElasticSearch Exception occurred: {str(e)}")
         tb = traceback.format_exc()
@@ -288,10 +283,6 @@ def _get(output: dict,
     elastic = Elasticsearch([DEFAULT_ELASTIC], request_timeout=120)
     elastic.indices.refresh(index='fhir')
 
-    logs = fhir_get(f"{program}-{project}", study_path, DEFAULT_ELASTIC)
-    output['logs'].extend(logs)
-
-
     # zip and upload the exported files to bucket
     now = datetime.now().strftime("%Y%m%d-%H%M%S")
     object_name = f'{project_id}_{now}_SNAPSHOT.zip'
@@ -326,9 +317,6 @@ def _empty_project(output: dict,
         for index in ["researchsubject", "specimen", "file"]:
             meta_flat_delete(project_id=f"{program}-{project}", index=index)
         output['logs'].append(f"EMPTIED flat for {program}-{project}")
-
-        fhir_delete(f"{program}-{project}", DEFAULT_ELASTIC)
-        output['logs'].append(f"EMPTIED FHIR STORE for {program}-{project}")
 
     except Exception as e:
         output['logs'].append(f"An Exception Occurred emptying project {program}-{project}: {str(e)}")
