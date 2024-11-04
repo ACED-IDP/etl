@@ -216,11 +216,12 @@ def _load_all(study: str,
         try:
             result = subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
         except Exception as err:
+            output['logs'].append("TRACEBACK:", traceback.print_tb(err.__traceback__))
+            output['logs'].append("COMMAND ERROR:", err)
             output['logs'].append(f"ERROR: Unable to generate jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}")
-            output['logs'].append(traceback.print_tb(err.__traceback__))
-            if result.stderr:
+            if result and result.stderr:
                 output['logs'].append(result.stderr.read().decode())
-            if result.stdout:
+            if result and result.stdout:
                 output['logs'].append(result.stdout.read().decode())
             return False
         
