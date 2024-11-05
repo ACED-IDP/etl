@@ -212,20 +212,10 @@ def _load_all(study: str,
         extraction_path = str(extraction_path)
         output['logs'].append(f"Simplifying study: {file_path}")
 
-        # TODO: test on etl pod
-        try:
-            result = subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"])
-        except Exception as err:
-            output['logs'].append("TRACEBACK:", traceback.print_tb(err.__traceback__))
-            output['logs'].append("COMMAND ERROR:", err)
-            output['logs'].append(f"ERROR: Unable to generate jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}")
-            if result and result.stderr:
-                output['logs'].append(result.stderr.read().decode())
-            if result and result.stdout:
-                output['logs'].append(result.stdout.read().decode())
-            return False
-        
-        bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
+        # call jsonschemagraph to create edges and vertices
+        subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"], check=True)
+
+        bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _auth().get_access_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
@@ -251,6 +241,7 @@ def _load_all(study: str,
                     limit=None, elastic_url=DEFAULT_ELASTIC,
                     output_path=None)
 
+    # when making changes to Elasticsearch
     except OpenSearchException as e:
         output['logs'].append(f"An ElasticSearch Exception occurred: {str(e)}")
         tb = traceback.format_exc()
@@ -261,6 +252,28 @@ def _load_all(study: str,
             output['logs'].extend(logs)
         return False
 
+    # when generating graph with jsonschemagraph
+    except subprocess.CalledProcessError as exception:
+
+        # save and print any useful logs
+        tb = traceback.print_tb(exception.__traceback__)
+        for title, log in [("stdout", exception.stdout), ("traceback", tb), ("stderr", exception.stderr)]:
+            if not log:
+                continue
+            
+            message = f"{title.upper()}: {log}"
+            output['logs'].append(message)
+            print(message)
+
+        # print final error
+        final_error = f"ERROR: Unable to generate valid jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}"
+        output['logs'].append(final_error)
+        print(final_error)
+        print("see logs directory for any additional details")
+
+        return False
+
+    # all other exceptions
     except Exception as e:
         output['logs'].append(f"An Exception Occurred: {str(e)}")
         tb = traceback.format_exc()
