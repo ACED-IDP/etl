@@ -51,7 +51,7 @@ RUN source venv/bin/activate && pip install "aced-submission==0.0.9rc37"
     
 RUN git clone https://github.com/bmeg/iceberg.git && \
 	cd iceberg && \
-	git checkout feature/FHIR-resource-type
+	git checkout feature/substance-and-group
 
 #Add jsonschemagraph exe to image
 RUN wget https://github.com/bmeg/jsonschemagraph/releases/download/v0.0.2/jsonschemagraph-linux.amd64 -P /usr/local/bin/
