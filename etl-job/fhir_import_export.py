@@ -215,7 +215,7 @@ def _load_all(study: str,
         # call jsonschemagraph to create edges and vertices
         subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"], check=True)
 
-        bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _auth().get_access_token())
+        bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
