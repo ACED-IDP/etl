@@ -290,6 +290,7 @@ def _load_all(study: str,
     return True
 
 
+# TODO: do we want to delete this as well? (TKEDTE-316)
 def _get(output: dict,
          program: str,
          project: str,
@@ -361,7 +362,7 @@ def main():
     # note, only the last output (a line in stdout with `[out]` prefix) is returned to the caller
 
     # output['env'] = {k: v for k, v in os.environ.items()}
-
+    
     input_data = _input_data()
     print(f"[out] {json.dumps(input_data, separators=(',', ':'))}")
     program, project = _get_program_project(input_data)
@@ -377,19 +378,19 @@ def main():
     if method.lower() == 'put':
         # read from bucket, write to fhir store
         _put(input_data, output, program, project, user, schema)
-        # after pushing commits, create a snapshot file
-        object_id = _get(output, program, project, user, auth)
-        output['snapshot'] = {'object_id': object_id}
     elif method.lower() == 'get':
+        
+        # TODO: should this be removed as well? (TKEDTE-316)
         # read fhir store, write to bucket
         object_id = _get(output, program, project, user, auth)
         output['object_id'] = object_id
     elif method.lower() == 'delete':
         _empty_project(output, program, project, user, dictionary_path=schema,
-                       config_path="config.yaml")
+                    config_path="config.yaml")
 
     else:
         raise Exception(f"unknown method {method}")
+
 
     # note, only the last output (a line in stdout with `[out]` prefix) is returned to the caller
     print(f"[out] {json.dumps(output, separators=(',', ':'))}")
