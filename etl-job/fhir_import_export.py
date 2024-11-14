@@ -213,7 +213,8 @@ def _load_all(study: str,
         output['logs'].append(f"Simplifying study: {file_path}")
 
         # call jsonschemagraph to create edges and vertices
-        subprocess.run(["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"], check=True)
+        graph_gen_cmd = ["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"]
+        subprocess.run(graph_gen_cmd, check=True, capture_output=True)
 
         bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
 
@@ -269,9 +270,7 @@ def _load_all(study: str,
         final_error = f"ERROR: Unable to generate valid jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}"
         output['logs'].append(final_error)
         print(final_error)
-        print("see logs directory for any additional details")
-
-        return False
+        print("see saved logs for more details")
 
     # all other exceptions
     except Exception as e:
