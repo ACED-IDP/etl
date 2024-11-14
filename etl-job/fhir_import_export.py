@@ -242,23 +242,11 @@ def _load_all(study: str,
                     limit=None, elastic_url=DEFAULT_ELASTIC,
                     output_path=None)
 
-    # when making changes to Elasticsearch
-    except OpenSearchException as e:
-        output['logs'].append(f"An ElasticSearch Exception occurred: {str(e)}")
-        tb = traceback.format_exc()
-        print("TRACEBACK: ", tb)
-        print("OpenSearchException: ", str(e))
-        output['logs'].append(tb)
-        if logs is not None:
-            output['logs'].extend(logs)
-        return False
-
     # when generating graph with jsonschemagraph
     except subprocess.CalledProcessError as exception:
-
         # save and print any useful logs
         tb = traceback.print_tb(exception.__traceback__)
-        for title, log in [("stdout", exception.stdout), ("traceback", tb), ("stderr", exception.stderr)]:
+        for title, log in [("stdout", exception.stdout), ("traceback", tb), ("ERROR", exception.stderr)]:
             if not log:
                 continue
             
@@ -270,7 +258,18 @@ def _load_all(study: str,
         final_error = f"ERROR: Unable to generate valid jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}"
         output['logs'].append(final_error)
         print(final_error)
-        print("see saved logs for more details")
+        raise
+
+    # when making changes to Elasticsearch
+    except OpenSearchException as e:
+        output['logs'].append(f"An ElasticSearch Exception occurred: {str(e)}")
+        tb = traceback.format_exc()
+        print("TRACEBACK: ", tb)
+        print("OpenSearchException: ", str(e))
+        output['logs'].append(tb)
+        if logs is not None:
+            output['logs'].extend(logs)
+        return False
 
     # all other exceptions
     except Exception as e:
@@ -374,6 +373,7 @@ def main():
 
     method = input_data.get("method", None)
     assert method, "input data must contain a `method`"
+
     if method.lower() == 'put':
         # read from bucket, write to fhir store
         _put(input_data, output, program, project, user, schema)
@@ -386,7 +386,6 @@ def main():
     elif method.lower() == 'delete':
         _empty_project(output, program, project, user, dictionary_path=schema,
                     config_path="config.yaml")
-
     else:
         raise Exception(f"unknown method {method}")
 
@@ -425,7 +424,7 @@ def _put(input_data: dict,
 
             # load the study into the database and elastic search
             _load_all(project, f"{program}-{project}", output, file_path, schema, "work")
-
+        
         shutil.rmtree(f"/root/studies/{project}")
 
 
