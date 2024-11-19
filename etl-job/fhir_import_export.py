@@ -288,43 +288,6 @@ def _load_all(study: str,
     return True
 
 
-# TODO: do we want to delete this as well? (TKEDTE-316)
-def _get(output: dict,
-         program: str,
-         project: str,
-         user: dict,
-         auth: Gen3Auth) -> str | None:
-    """Export data from the fhir store to bucket, returns object_id."""
-    can_read = _can_read(output, program, project, user)
-    if not can_read:
-        output['logs'].append(f"No read permissions on {program}-{project}")
-        return None
-
-    study_path = f"studies/{project}"
-    project_id = f"{program}-{project}"
-
-    # ensure we wait for the index to be refreshed before we query it
-    elastic = Elasticsearch([DEFAULT_ELASTIC], request_timeout=120)
-    elastic.indices.refresh(index='fhir')
-
-    # zip and upload the exported files to bucket
-    now = datetime.now().strftime("%Y%m%d-%H%M%S")
-    object_name = f'{project_id}_{now}_SNAPSHOT.zip'
-
-    config = Config()
-    cp_result = push_snapshot(
-        config=config,
-        auth=auth,
-        project_id=project_id,
-        from_=study_path,
-        object_name=object_name)
-
-    output['logs'].append(cp_result['msg'])
-    object_id = cp_result['object_id']
-
-    return object_id
-
-
 def _empty_project(output: dict,
                    program: str,
                    project: str,
@@ -377,12 +340,6 @@ def main():
     if method.lower() == 'put':
         # read from bucket, write to fhir store
         _put(input_data, output, program, project, user, schema)
-    elif method.lower() == 'get':
-        
-        # TODO: should this be removed as well? (TKEDTE-316)
-        # read fhir store, write to bucket
-        object_id = _get(output, program, project, user, auth)
-        output['object_id'] = object_id
     elif method.lower() == 'delete':
         _empty_project(output, program, project, user, dictionary_path=schema,
                     config_path="config.yaml")
