@@ -258,7 +258,7 @@ def _load_all(study: str,
         final_error = f"ERROR: Unable to generate valid jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}"
         output['logs'].append(final_error)
         print(final_error)
-        raise
+        raise Exception(final_error)
 
     # when making changes to Elasticsearch
     except OpenSearchException as e:
@@ -361,7 +361,8 @@ def _put(input_data: dict,
     # check permissions
     can_create = _can_create(output, program, project, user)
     output['logs'].append(f"CAN CREATE: {can_create}")
-    assert can_create, f"No create permissions on {program}"
+    if not can_create:
+        raise Exception(f"401: No permissions to create project {project} on program {program}. \nYou can view your project-level permissions with g3t ping")
     assert 'push' in input_data, "input data must contain a `push`"
     for commit in input_data['push']['commits']:
         assert 'object_id' in commit, "commit must contain an `object_id`"
