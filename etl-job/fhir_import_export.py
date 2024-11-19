@@ -258,7 +258,7 @@ def _load_all(study: str,
         final_error = f"ERROR: Unable to generate valid jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}"
         # exception.stdout.append(f"\n{final_error}")
         output['logs'].append(final_error)
-        print(f"[out] {final_error}")
+        print(f"[out] {json.dumps(output, separators=(',', ':'))}")
         raise
 
     # when making changes to Elasticsearch
