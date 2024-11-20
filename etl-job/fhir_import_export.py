@@ -352,7 +352,6 @@ def main():
     else:
         raise Exception(f"unknown method {method}")
 
-
     # note, only the last output (a line in stdout with `[out]` prefix) is returned to the caller
     _write_output_to_client(output)
 
@@ -368,9 +367,11 @@ def _put(input_data: dict,
     can_create = _can_create(output, program, project, user)
     output['logs'].append(f"CAN CREATE: {can_create}")
     if not can_create:
-        error_log = f"401: No permissions to create project {project} on program {program}. \nYou can view your project-level permissions with g3t ping"
+        error_log = f"ERROR 401: No permissions to create project {project} on program {program}. \nYou can view your project-level permissions with g3t ping"
         output["logs"].append(error_log)
+        _write_output_to_client(output)
         raise Exception(error_log)
+    
     assert 'push' in input_data, "input data must contain a `push`"
     for commit in input_data['push']['commits']:
         assert 'object_id' in commit, "commit must contain an `object_id`"
