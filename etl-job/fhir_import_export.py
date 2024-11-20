@@ -164,6 +164,7 @@ def _download_and_unzip(object_id: str,
     except Exception as e:
         output['logs'].append(f"An Exception Occurred: {str(e)}")
         output['logs'].append(f"ERROR DOWNLOADING {object_id} {file_path}")
+        _write_output_to_client(output)
         raise e
         return False
 
@@ -252,13 +253,13 @@ def _load_all(study: str,
             
             message = f"{title.upper()}: {log}"
             output['logs'].append(message)
+            _write_output_to_client(output)
             print(message)
 
-        # print final error
+        # print final error before raising
         final_error = f"ERROR: Unable to generate valid jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}"
-        # exception.stdout.append(f"\n{final_error}")
         output['logs'].append(final_error)
-        print(f"[out] {json.dumps(output, separators=(',', ':'))}")
+        _write_output_to_client(output)
         raise
 
     # when making changes to Elasticsearch
@@ -270,7 +271,8 @@ def _load_all(study: str,
         output['logs'].append(tb)
         if logs is not None:
             output['logs'].extend(logs)
-        return False
+        _write_output_to_client(output)
+        raise
 
     # all other exceptions
     except Exception as e:
@@ -281,7 +283,8 @@ def _load_all(study: str,
         output['logs'].append(tb)
         if logs is not None:
             output['logs'].extend(logs)
-        return False
+        _write_output_to_client(output)
+        raise
 
     output['logs'].append(f"Loaded {study}")
     if logs is not None:
@@ -310,6 +313,8 @@ def _empty_project(output: dict,
         output['logs'].append(f"An Exception Occurred emptying project {program}-{project}: {str(e)}")
         tb = traceback.format_exc()
         output['logs'].append(tb)
+        _write_output_to_client(output)
+        raise
 
 
 def main():
@@ -326,7 +331,7 @@ def main():
     # output['env'] = {k: v for k, v in os.environ.items()}
     
     input_data = _input_data()
-    print(f"[out] {json.dumps(input_data, separators=(',', ':'))}")
+    _write_output_to_client(input_data)
     program, project = _get_program_project(input_data)
 
     schema = os.getenv('DICTIONARY_URL', None)
@@ -349,7 +354,7 @@ def main():
 
 
     # note, only the last output (a line in stdout with `[out]` prefix) is returned to the caller
-    print(f"[out] {json.dumps(output, separators=(',', ':'))}")
+    _write_output_to_client(output)
 
 
 def _put(input_data: dict,
@@ -363,7 +368,9 @@ def _put(input_data: dict,
     can_create = _can_create(output, program, project, user)
     output['logs'].append(f"CAN CREATE: {can_create}")
     if not can_create:
-        raise Exception(f"401: No permissions to create project {project} on program {program}. \nYou can view your project-level permissions with g3t ping")
+        error_log = f"401: No permissions to create project {project} on program {program}. \nYou can view your project-level permissions with g3t ping"
+        output["logs"].append(error_log)
+        raise Exception(error_log)
     assert 'push' in input_data, "input data must contain a `push`"
     for commit in input_data['push']['commits']:
         assert 'object_id' in commit, "commit must contain an `object_id`"
@@ -386,6 +393,12 @@ def _put(input_data: dict,
         
         shutil.rmtree(f"/root/studies/{project}")
 
+def _write_output_to_client(output):
+    '''
+    formats output as json to stdout so it is passed back to the client,
+    most importantly to display relevant logs from the job erroring out
+    '''
+    print(f"[out] {json.dumps(output, separators=(',', ':'))}")
 
 if __name__ == '__main__':
     main()
