@@ -12,7 +12,7 @@ from datetime import datetime
 
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
-from aced_submission.grip_load import bulk_load, get_project_data, \
+from aced_submission.grip_load import bulk_load_raw, get_project_data, \
     delete_project as grip_delete
 from opensearchpy import OpenSearch as Elasticsearch
 from opensearchpy import OpenSearchException
@@ -213,11 +213,10 @@ def _load_all(study: str,
         extraction_path = str(extraction_path)
         output['logs'].append(f"Simplifying study: {file_path}")
 
-        # call jsonschemagraph to create edges and vertices
-        graph_gen_cmd = ["jsonschemagraph", "gen-dir", "iceberg/schemas/graph", f"{file_path}", f"{extraction_path}","--project_id", f"{project_id}","--gzip_files"]
-        subprocess.run(graph_gen_cmd, check=True, capture_output=True)
-
-        bulk_load(_get_grip_service(), "CALIPER",f"{program}-{project}", extraction_path, output, _get_token())
+        importable_files = [f for f in os.listdir(extraction_path) if f.endswith(".ndjson")]
+        for file in importable_files:
+            # output capturing logs from this function
+            bulk_load_raw(_get_grip_service(), "CALIPER", f"{program}-{project}", file, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
@@ -242,25 +241,6 @@ def _load_all(study: str,
                     generator=generator(),
                     limit=None, elastic_url=DEFAULT_ELASTIC,
                     output_path=None)
-
-    # when generating graph with jsonschemagraph
-    except subprocess.CalledProcessError as exception:
-        # save and print any useful logs
-        tb = traceback.print_tb(exception.__traceback__)
-        for title, log in [("stdout", exception.stdout), ("traceback", tb), ("ERROR", exception.stderr)]:
-            if not log:
-                continue
-            
-            message = f"{title.upper()}: {log}"
-            output['logs'].append(message)
-            _write_output_to_client(output)
-            print(message)
-
-        # print final error before raising
-        final_error = f"ERROR: Unable to generate valid jsonschema graph from {file_path} to {extraction_path} for project ID {project_id}"
-        output['logs'].append(final_error)
-        _write_output_to_client(output)
-        raise
 
     # when making changes to Elasticsearch
     except OpenSearchException as e:
@@ -329,7 +309,7 @@ def main():
     # note, only the last output (a line in stdout with `[out]` prefix) is returned to the caller
 
     # output['env'] = {k: v for k, v in os.environ.items()}
-    
+
     input_data = _input_data()
     _write_output_to_client(input_data)
     program, project = _get_program_project(input_data)
@@ -337,7 +317,7 @@ def main():
     schema = os.getenv('DICTIONARY_URL', None)
 
     if schema is None:
-        schema = 'https://aced-public.s3.us-west-2.amazonaws.com/aced-test.json'
+        schema = 'https://raw.githubusercontent.com/bmeg/iceberg/refs/heads/main/schemas/graph/graph-fhir.json'
         output['logs'].append(f"DICTIONARY_URL not found in environment using {schema}")
 
     method = input_data.get("method", None)
@@ -371,7 +351,7 @@ def _put(input_data: dict,
         output["logs"].append(error_log)
         _write_output_to_client(output)
         raise Exception(error_log)
-    
+
     assert 'push' in input_data, "input data must contain a `push`"
     for commit in input_data['push']['commits']:
         assert 'object_id' in commit, "commit must contain an `object_id`"
@@ -391,7 +371,7 @@ def _put(input_data: dict,
 
             # load the study into the database and elastic search
             _load_all(project, f"{program}-{project}", output, file_path, schema, "work")
-        
+
         shutil.rmtree(f"/root/studies/{project}")
 
 def _write_output_to_client(output):
