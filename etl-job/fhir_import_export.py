@@ -211,7 +211,7 @@ def _load_all(program: str,
             meta_flat_delete(project_id=f"{program}-{project}", index=index)
 
         for index, generator in index_generator_dict.items():
-            load_flat(project_id=project_id, index=index,
+            load_flat(project_id=f"{program}-{project}", index=index,
                       generator=generator(),
                       limit=None, elastic_url=DEFAULT_ELASTIC,
                       output_path=None)
