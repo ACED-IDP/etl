@@ -14,7 +14,7 @@ RUN apt-get -y --no-install-recommends install  \
            vim \
            automake \
            libtool \
-	   wget \
+	   wget
 
 RUN rm -rf /var/lib/apt/lists/*
 
