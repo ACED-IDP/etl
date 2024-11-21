@@ -186,10 +186,11 @@ def _load_all(program: str,
 
     logs = None
     try:
-        importable_files = [f for f in os.listdir(file_path) if f.endswith(".ndjson")]
-        for file in importable_files:
-            # output dictionary is capturing logs from this function
-            bulk_load_raw(_get_grip_service(), "CALIPER", f"{program}-{project}", file, output, _get_token())
+        for file in pathlib.Path(file_path).rglob('*'):
+            if file.suffix in ['.ndjson', '.json']:
+                # output dictionary is capturing logs from this function
+                bulk_load_raw(_get_grip_service(), "CALIPER",
+                            f"{program}-{project}", file, output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
