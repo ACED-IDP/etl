@@ -190,7 +190,7 @@ def _load_all(program: str,
             if file.suffix in ['.ndjson', '.json']:
                 # output dictionary is capturing logs from this function
                 bulk_load_raw(_get_grip_service(), "CALIPER",
-                            f"{program}-{project}", file, output, _get_token())
+                    f"{program}-{project}", str(file), output, _get_token())
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
