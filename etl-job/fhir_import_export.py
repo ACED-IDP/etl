@@ -6,18 +6,14 @@ import shutil
 import subprocess
 import sys
 import traceback
-import yaml
-from datetime import datetime
 
 from aced_submission.meta_flat_load import DEFAULT_ELASTIC, load_flat
 from aced_submission.meta_flat_load import delete as meta_flat_delete
 from aced_submission.grip_load import bulk_load_raw, get_project_data, \
     delete_project as grip_delete
-from opensearchpy import OpenSearch as Elasticsearch
 from opensearchpy import OpenSearchException
 from gen3.auth import Gen3Auth
 from gen3.file import Gen3File
-from gen3_tracker.config import Config
 from gen3_tracker.meta.dataframer import LocalFHIRDatabase
 
 logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
@@ -215,9 +211,9 @@ def _load_all(program: str,
 
         for index, generator in index_generator_dict.items():
             load_flat(project_id=project_id, index=index,
-                    generator=generator(),
-                    limit=None, elastic_url=DEFAULT_ELASTIC,
-                    output_path=None)
+                      generator=generator(),
+                      limit=None, elastic_url=DEFAULT_ELASTIC,
+                      output_path=None)
 
     # when making changes to Elasticsearch
     except OpenSearchException as e:
@@ -243,7 +239,7 @@ def _load_all(program: str,
         _write_output_to_client(output)
         raise
 
-    output['logs'].append(f"Loaded {study}")
+    output['logs'].append(f"Loaded {program}-{project}")
     if logs is not None:
         output['logs'].extend(logs)
     return True
@@ -257,7 +253,8 @@ def _empty_project(output: dict,
     """Clear out graph and flat metadata for project """
     # check permissions
     try:
-        grip_delete(_get_grip_service(), graph_name="CALIPER", project_id=f"{program}-{project}",
+        grip_delete(_get_grip_service(), graph_name="CALIPER",
+                    project_id=f"{program}-{project}",
                     output=output, access_token=_get_token())
         output['logs'].append(f"EMPTIED graph for {program}-{project}")
 
@@ -298,7 +295,7 @@ def main():
         _put(input_data, output, program, project, user)
     elif method.lower() == 'delete':
         _empty_project(output, program, project, user,
-                    config_path="config.yaml")
+                       config_path="config.yaml")
     else:
         raise Exception(f"unknown method {method}")
 
@@ -343,12 +340,14 @@ def _put(input_data: dict,
 
         shutil.rmtree(f"/root/studies/{project}")
 
+
 def _write_output_to_client(output):
     '''
     formats output as json to stdout so it is passed back to the client,
     most importantly to display relevant logs from the job erroring out
     '''
     print(f"[out] {json.dumps(output, separators=(',', ':'))}")
+
 
 if __name__ == '__main__':
     main()
