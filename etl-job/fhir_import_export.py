@@ -189,8 +189,10 @@ def _load_all(program: str,
         for file in pathlib.Path(file_path).rglob('*'):
             if file.suffix in ['.ndjson', '.json']:
                 # output dictionary is capturing logs from this function
-                bulk_load_raw(_get_grip_service(), "CALIPER",
+                status = bulk_load_raw(_get_grip_service(), "CALIPER",
                     f"{program}-{project}", str(file), output, _get_token())
+                if status["status"] != 200:
+                    raise Exception(f"Critical Error load of file {file} returned non 200 status {status['status']}")
 
         assert pathlib.Path(work_path).exists(), f"Directory {work_path} does not exist."
         work_path = pathlib.Path(work_path)
