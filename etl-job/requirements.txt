@@ -1,8 +1,3 @@
-# moved to docker file
-# gen3_util>=0.0.7rc2
-# iceberg_tools>=0.0.4
-# aced_submission>=0.0.7rc6
-
 psycopg2
 boto3
 yp
